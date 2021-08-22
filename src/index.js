@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
 
 const renderer = new THREE.WebGLRenderer();
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -16,8 +16,10 @@ let planetVars = [
         radius: 2,
         texture: '../img/surface0.png',
         bumpmap: '../img/height0.png',
-        pos: new THREE.Vector3(-5, 0, -5),
-        mass: 1,
+        specular: '../img/specular0.png',
+        clouds: '../img/clouds.png',
+        pos: new THREE.Vector3(-5, 0, -10),
+        mass: 2,
         orbit: 1,
         spin: 0.001
     },
@@ -25,8 +27,8 @@ let planetVars = [
         radius: 1.5,
         texture: '../img/surface1.png',
         bumpmap: '../img/height1.png',
-        pos: new THREE.Vector3(30, 0, -60),
-        mass: 0.5,
+        pos: new THREE.Vector3(50, 0, -80),
+        mass: 1,
         orbit: 1,
         spin: 0.002
     },
@@ -35,9 +37,59 @@ let planetVars = [
         texture: '../img/surface2.png',
         bumpmap: '../img/height2.png',
         pos: new THREE.Vector3(-200, 0, -800),
-        mass: 0.1,
+        mass: 0.2,
         orbit: 1,
         spin: -0.0015
+    },
+    {
+        radius: 1.75,
+        texture: '../img/surface3.png',
+        bumpmap: '../img/height3.png',
+        pos: new THREE.Vector3(50, 0, 300),
+        mass: 2,
+        orbit: 1,
+        spin: 0.001
+    },
+    {
+        radius: 4,
+        texture: '../img/surface4.png',
+        clouds: '../img/clouds.png',
+        pos: new THREE.Vector3(600, 0, -500),
+        mass: 5,
+        orbit: 1,
+        spin: 0.005
+    },
+    {
+        radius: 0.5,
+        texture: '../img/surface5.png',
+        bumpmap: '../img/height5.png',
+        pos: new THREE.Vector3(600, 0, -515),
+        mass: 0.1,
+        orbit: 1,
+        orbit_around: 4,
+        spin: 0.003,
+    },
+    {
+        radius: 0.7,
+        texture: '../img/surface6.png',
+        bumpmap: '../img/height6.png',
+        specular: '../img/specular6.png',
+        clouds: '../img/clouds.png',
+        pos: new THREE.Vector3(625, 0, -500),
+        mass: 0.2,
+        orbit: 1,
+        orbit_around: 4,
+        spin: 0.001
+    },
+    {
+        radius: 0.5,
+        texture: '../img/surface7.png',
+        bumpmap: '../img/height7.png',
+        pos: new THREE.Vector3(-5, 0, -30),
+        mass: 0.15,
+        orbit: 1,
+        orbit_around: 0,
+        spin: 0.0001
     }
 ];
 
@@ -46,17 +98,16 @@ let planets = [];
 
 // variables related to speed and direction of camera "spaceship":
 
-let cameraEuler = new THREE.Euler(0, 0, 0, 'XYZ');
+let rotQuaternion = new THREE.Quaternion();
 let cameraDirection = new THREE.Vector3();
 
-let linearThrust = 0.0001;  // how fast the camera spaceship can accelerate
+let linearThrust = 0.001;  // how fast the camera spaceship can accelerate
 let angularThrust = 0.0002;  // ditto, but for rotation
 let G = 0.01;  // universal gravitational constant
 let cameraMass = 0.00001;  // mass of the camera spaceship, used for gravity
 
 let cameraVelocity = {
-    forward: 0,
-    linear: new THREE.Vector3(0, 0, 0),
+    linear: new THREE.Vector3(0.005, 0, -0.01),
     angular: new THREE.Vector3(0, 0, 0)
 };
 
@@ -81,7 +132,7 @@ function createSphere(radius=1, texture_src=null, bumpmap_src=null, specular_src
         material.map = textureLoader.load(texture_src);
     }
     if (bumpmap_src) {
-        let texture = textureLoader.load(bumpmap_src)
+        let texture = textureLoader.load(bumpmap_src);
         material.bumpMap = texture;
         material.bumpScale = 0.05;
         material.displacementMap = texture;
@@ -89,14 +140,13 @@ function createSphere(radius=1, texture_src=null, bumpmap_src=null, specular_src
     }
     if (specular_src) {
         material.specularMap = textureLoader.load(specular_src);
-        material.specularMap = new THREE.Color(0xffffff)
     }
 	const sphere = new THREE.Mesh(geometry, material);
     return sphere;
 }
 
 // set up ambient light
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.05);
 scene.add(ambientLight);
 
 
@@ -129,16 +179,51 @@ let J = new THREE.Vector3(0, 1, 0);
 for (let i = 0; i < planetVars.length; i++) {
     let vars = planetVars[i];
     const planet = createSphere(vars.radius, vars.texture,
-                              vars.bumpmap, vars.specular);
+                                vars.bumpmap, vars.specular);
+    planet.position.copy(vars.pos);
     if (vars.vel == null && vars.orbit) {
-        // compute velocity needed for circular orbit about the sun
-        relative_pos.subVectors(planet.position, sun.position);
-        let v = Math.sqrt(G * sunMass / relative_pos.length());
-        let direction = relative_pos.cross(J).normalize();
-        vars.vel = direction.multiplyScalar(v * vars.orbit);
+        // compute velocity needed for circular orbit
+        if (vars.orbit_around == null) {
+            // orbit around sun
+            relative_pos.subVectors(planet.position, sun.position);
+            let v = Math.sqrt(G * sunMass / relative_pos.length());
+            let direction = relative_pos.cross(J).normalize();
+            vars.vel = direction.multiplyScalar(v * vars.orbit);
+        }
+        else {
+            // orbit around another planet
+            relative_pos.subVectors(planet.position, planets[vars.orbit_around].position);
+            let v = Math.sqrt(G * planetVars[vars.orbit_around].mass / relative_pos.length());
+            let direction = relative_pos.cross(J).normalize();
+            vars.vel = new THREE.Vector3();
+            vars.vel.addVectors(planetVars[vars.orbit_around].vel,
+                                direction.multiplyScalar(v * vars.orbit));
+        }
     }
     planets.push(planet);
     scene.add(planet);
+    if (vars.clouds !== null) {
+        // add clouds
+        const geometry = new THREE.SphereGeometry(vars.radius * 1.02, 64, 64);
+        const material = new THREE.MeshPhongMaterial();
+        material.map = textureLoader.load(vars.clouds);
+        material.transparent = true;
+        const cloudSphere = new THREE.Mesh(geometry, material);
+        cloudSphere.position.copy(planet.position);
+        scene.add(cloudSphere);
+        vars.cloudSphere = cloudSphere;
+    }
+    // if (vars.water) {
+    //     // add water
+    //     const geometry = new THREE.SphereGeometry(vars.radius + vars.water, 64, 64);
+    //     const material = new THREE.MeshPhongMaterial();
+    //     material.color = new THREE.Color(0x176fd4)
+    //     material.specular = new THREE.Color(0xdce8f5);
+    //     const waterSphere = new THREE.Mesh(geometry, material);
+    //     waterSphere.position.copy(planet.position);
+    //     scene.add(waterSphere);
+    //     vars.waterSphere = waterSphere;
+    // }
 }
 // set planet positions. for some reason this doesn't work in the main loop
 for (let i = 0; i < planets.length; i++) {
@@ -146,12 +231,12 @@ for (let i = 0; i < planets.length; i++) {
 }
 
 // create starfield
-// const starfieldGeometry = new THREE.SphereGeometry(500, 64, 64);
-// const starfieldMaterial = new THREE.MeshBasicMaterial();
-// starfieldMaterial.map = textureLoader.load('../img/starfield.png');
-// starfieldMaterial.side = THREE.BackSide;
-// const starfield = new THREE.Mesh(starfieldGeometry, starfieldMaterial);
-// scene.add(starfield);
+const starfieldGeometry = new THREE.SphereGeometry(5000, 64, 64);
+const starfieldMaterial = new THREE.MeshBasicMaterial();
+starfieldMaterial.map = textureLoader.load('../img/starfield.png');
+starfieldMaterial.side = THREE.BackSide;
+const starfield = new THREE.Mesh(starfieldGeometry, starfieldMaterial);
+scene.add(starfield);
 
 
 // Functions for controlling the camera "spaceship":
@@ -202,6 +287,12 @@ function gravityStep() {
         accelVec.multiplyScalar(planetVars[i].mass / sunMass);
         sunVel.sub(accelVec);
         planets[i].position.add(planetVars[i].vel);
+        if (planetVars[i].clouds !== null) {
+            planetVars[i].cloudSphere.position.copy(planets[i].position);
+        }
+        // if (planetVars[i].water) {
+        //     planetVars[i].waterSphere.position.copy(planets[i].position);
+        // }
     }
     sun.position.add(sunVel);
     sunLight.position.copy(sun.position);
@@ -211,6 +302,9 @@ function gravityStep() {
 function rotatePlanets() {
     for (let i = 0; i < planetVars.length; i++) {
         planets[i].rotation.y += planetVars[i].spin;
+        if (planetVars[i].clouds !== null) {
+            planetVars[i].cloudSphere.rotation.y += (planetVars[i].spin * 1.1);
+        }
     }
 }
 
@@ -261,15 +355,19 @@ function updateCamera() {
     }
     // update position and angle
     camera.position.add(cameraVelocity.linear);
-    camera.rotation.y += cameraVelocity.angular.y;
-    camera.rotation.x += cameraVelocity.angular.x;
-    camera.rotation.z += cameraVelocity.angular.z;
-    // cameraEuler.y += cameraVelocity.angular.y;
-    // cameraEuler.x += cameraVelocity.angular.x;
-    // cameraEuler.z += cameraVelocity.angular.z;
-    // camera.quaternion.setFromEuler(cameraEuler);
+    rotQuaternion.set(cameraVelocity.angular.x, cameraVelocity.angular.y, cameraVelocity.angular.z, 1).normalize();
+    camera.quaternion.multiply(rotQuaternion);
     // make starfield follow camera
-    // starfield.position.set(camera.position);
+    starfield.position.copy(camera.position);
+}
+
+// define window resize event listener
+window.addEventListener('resize', onWindowResize, false);
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize( window.innerWidth, window.innerHeight );
 }
 
 // Define animation loop
